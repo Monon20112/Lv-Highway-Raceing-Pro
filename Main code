@@ -1,0 +1,323 @@
+ 
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>LV Highway Racing Pro</title>
+    <style>
+        body { background-color: #1a1a1a; text-align: center; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: white; margin: 0; overflow: hidden; }
+        #game-container { position: relative; width: 300px; margin: 10px auto; }
+        canvas { background: #2c3e50; border: 4px solid #34495e; display: block; border-radius: 12px; image-rendering: pixelated; width: 300px; height: 450px; margin: 0 auto; }
+        .controls { margin-top: 15px; display: flex; justify-content: center; gap: 10px; width: 300px; margin-left: auto; margin-right: auto; }
+        .controls button { padding: 15px 20px; font-size: 20px; font-weight: bold; background: #3498db; color: white; border: none; border-radius: 12px; touch-action: manipulation; cursor: pointer; flex: 1; }
+        #powerBtn { background: #e67e22; font-size: 11px; display: none; }
+        #muteBtn { position: absolute; top: 10px; right: 10px; background: rgba(0,0,0,0.5); color: white; border: 1px solid white; border-radius: 50%; width: 30px; height: 30px; cursor: pointer; z-index: 20; font-size: 14px; }
+        #menuOverlay, #garageOverlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); display: flex; flex-direction: column; align-items: center; justify-content: center; border-radius: 12px; z-index: 10; }
+        #garageOverlay { display: none; justify-content: flex-start; padding-top: 15px; }
+        .mode-btn, .garage-btn { width: 85%; margin: 8px 0; padding: 15px; border-radius: 8px; border: none; color: white; font-weight: bold; cursor: pointer; font-size: 16px;}
+        .car-item { background: #222; width: 92%; margin: 6px auto; padding: 12px; border-radius: 10px; display: flex; flex-direction: column; border: 2px solid #333; box-sizing: border-box; }
+        .car-item.selected { border-color: #f1c40f; background: #2a2a2a; }
+        .car-info-row { display: flex; justify-content: space-between; align-items: center; width: 100%; }
+        .car-stats { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 5px; font-size: 10px; color: #aaa; text-transform: uppercase; border-top: 1px solid #333; padding-top: 5px; }
+        .stat-val { color: #3498db; font-weight: bold; }
+        .buy-btn { padding: 8px 15px; font-size: 12px; border-radius: 5px; color: white; font-weight: bold; border: none; cursor: pointer;}
+        #carList { width: 100%; overflow-y: auto; flex-grow: 1; }
+        #cheatCodeInput { width: 80%; padding: 10px; margin-bottom: 10px; border-radius: 5px; border: 1px solid #444; background: #111; color: #f1c40f; text-align: center; text-transform: uppercase; }
+    </style>
+</head>
+<body>
+    <h3 style="margin: 10px 0; letter-spacing: 2px; color: #f1c40f;">LV HIGHWAY RACING PRO</h3>
+    <div id="game-container">
+        <button id="muteBtn" onclick="toggleMute()">🔊</button>
+        <canvas id="gameCanvas"></canvas>
+        <div id="menuOverlay">
+            <h2 id="msg" style="color:#f1c40f; margin-bottom: 5px;">READY?</h2>
+            <p id="lastScoreDisplay" style="color: #fff; margin: 0; font-weight: bold; display: none;">SCORE: 0</p>
+            <p id="highScoreText" style="color: #2ecc71; margin: 5px 0 15px 0;">BEST: 0</p>
+            <button class="mode-btn" style="background:#2ecc71" onclick="startGame(1)">EASY</button>
+            <button class="mode-btn" style="background:#f39c12" onclick="startGame(3)">NORMAL</button>
+            <button class="mode-btn" style="background:#e74c3c" onclick="startGame(5)">HARD</button>
+            <button class="garage-btn" style="background:#9b59b6" onclick="openGarage()">GARAGE</button>
+        </div>
+        <div id="garageOverlay">
+            <h2 style="color:#9b59b6; margin:0;">GARAGE</h2>
+            <p id="garageBank" style="margin: 5px 0 10px 0; color:#2ecc71; font-weight:bold;">BEST: 0</p>
+            <input type="text" id="cheatCodeInput" placeholder="ENTER CODE" oninput="checkCheatCode(this.value)">
+            <div id="carList"></div>
+            <button class="mode-btn" style="background:#7f8c8d; width: 60%; padding: 10px; margin-top: 10px;" onclick="closeGarage()">BACK</button>
+            <button class="mode-btn" style="background:transparent; color:#555; font-size: 10px; border: 1px solid #333; margin: 5px 0;" onclick="resetGameData()">RESET DATA</button>
+        </div>
+    </div>
+    <div class="controls">
+        <button id="leftBtn">◀</button>
+        <button id="powerBtn" onclick="activatePower()">⚡ POWER</button>
+        <button id="rightBtn">▶</button>
+    </div>
+
+    <audio id="bgMusic" loop preload="auto" crossorigin="anonymous" src="https://www.soundhelix.com/examples/mp3/SoundHelix-Song-8.mp3"></audio>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const menu = document.getElementById('menuOverlay');
+        const garage = document.getElementById('garageOverlay');
+        const powerBtn = document.getElementById('powerBtn');
+        const bgMusic = document.getElementById('bgMusic');
+        const muteBtn = document.getElementById('muteBtn');
+        const highScoreDisplay = document.getElementById('highScoreText');
+        const lastScoreDisplay = document.getElementById('lastScoreDisplay');
+        const msgHeader = document.getElementById('msg');
+        canvas.width = 150; canvas.height = 225;
+
+        // --- NEW: AUDIO UNLOCKER FOR MOBILE BROWSERS ---
+        let audioUnlocked = false;
+        function unlockAudio() {
+            if (!audioUnlocked) {
+                bgMusic.play().then(() => {
+                    bgMusic.pause();
+                    bgMusic.currentTime = 0;
+                    audioUnlocked = true;
+                }).catch((err) => console.log("Audio unlock waiting...", err));
+                // Remove listeners once unlocked
+                document.removeEventListener('click', unlockAudio);
+                document.removeEventListener('touchstart', unlockAudio);
+            }
+        }
+        document.addEventListener('click', unlockAudio);
+        document.addEventListener('touchstart', unlockAudio);
+        // -----------------------------------------------
+
+        let score = 0, level = 1, speed = 0, baseSpeed = 0, gameActive = false, roadOffset = 0, lastScoreTime = 0;
+        let powerActive = false, powerCooldown = false, hasShield = false, isMuted = false, freezeActive = false;
+        
+        let highScore = parseInt(localStorage.getItem('lvRacerHigh')) || 0;
+        let ownedCars = JSON.parse(localStorage.getItem('lvOwnedCars')) || [0];
+        let currentCarIndex = parseInt(localStorage.getItem('lvCurrentCar')) || 0;
+
+        highScoreDisplay.innerText = "BEST: " + highScore;
+
+        const cars = [
+            { name: "Default", color: "#333", price: 0, power: "None", active: 0, cd: 0, topSpeed: 1.0 },
+            { name: "Red Flash", color: "#e74c3c", price: 10, power: "Nitro", active: 3, cd: 5, topSpeed: 1.2 },
+            { name: "White Ghost", color: "#ecf0f1", price: 20, power: "Ghost", active: 5, cd: 7, topSpeed: 1.1 },
+            { name: "Blue Nitro", color: "#3498db", price: 30, power: "Freeze", active: 4, cd: 6, topSpeed: 1.3 },
+            { name: "Yellow Bee", color: "#f1c40f", price: 40, power: "VIP", active: 4, cd: 5, topSpeed: 1.2 },
+            { name: "Green Neon", color: "#2ecc71", price: 50, power: "Shield", active: 0.1, cd: 8, topSpeed: 1.1 },
+            { name: "Orange Drift", color: "#e67e22", price: 60, power: "Snap Turn", active: 0.1, cd: 3, topSpeed: 1.4 },
+            { name: "Pink Power", color: "#fd79a8", price: 70, power: "Slow-Mo", active: 4, cd: 8, topSpeed: 1.0 },
+            { name: "BMW M3 GTR", color: "#bdc3c7", secondary: "#2980b9", price: 99999, power: "GOLDEN AURA", active: 6, cd: 10, topSpeed: 1.5, hidden: true },
+            { name: "Itachi Susanoo", color: "#111", secondary: "#c0392b", price: 99999, power: "AMATERASU", active: 5, cd: 6, topSpeed: 1.6, hidden: true }
+        ];
+
+        const lanes = [30, 75, 120]; 
+        let player = { laneIndex: 1, x: lanes[1], y: 170, targetX: lanes[1] };
+        let enemy = { x: lanes[0], y: -80, color: "#7b241c", targetX: lanes[0], laneIndex: 0 };
+        const enemyColors = ["#7b241c", "#1f618d", "#1e8449", "#707b7c", "#884ea0"];
+        const carMatrix = [[0,0,0,3,3,3,3,3,3,0,0,0],[0,0,3,1,1,2,2,1,1,3,0,0],[0,4,3,1,1,2,2,1,1,3,4,0],[3,3,3,1,1,2,2,1,1,3,3,3],[3,3,3,5,5,5,5,5,5,3,3,3],[3,3,3,1,1,1,1,1,1,3,3,3],[0,3,3,1,1,2,2,1,1,3,3,0],[0,0,3,1,1,2,2,1,1,3,0,0],[0,0,3,1,1,2,2,1,1,3,0,0],[0,0,3,1,1,2,2,1,1,3,0,0],[3,3,3,1,1,1,1,1,1,3,3,3],[3,3,3,1,1,2,2,1,1,3,3,3],[3,3,3,1,1,2,2,1,1,3,3,3],[0,3,3,1,1,2,2,1,1,3,3,0],[0,0,0,3,1,1,1,1,3,0,0,0]];
+
+        function toggleMute() { isMuted = !isMuted; bgMusic.muted = isMuted; muteBtn.innerText = isMuted ? "🔇" : "🔊"; }
+
+        function drawPixelCar(x, y, isPlayer, carObj) {
+            // Amaterasu Flame Effect for NPCs
+            if (!isPlayer && powerActive && currentCarIndex === 9) {
+                ctx.fillStyle = "rgba(10, 10, 10, 0.9)"; // Black smoke base
+                ctx.beginPath(); ctx.arc(x + 5, y + 10, 12, 0, Math.PI*2); ctx.fill();
+                ctx.fillStyle = "#000"; // Pitch black flame spike
+                ctx.beginPath(); ctx.moveTo(x-5, y+15); ctx.lineTo(x+5, y-10); ctx.lineTo(x+15, y+15); ctx.fill();
+                ctx.fillStyle = "#c0392b"; // Red core
+                ctx.beginPath(); ctx.arc(x + 5, y + 12, 5, 0, Math.PI*2); ctx.fill();
+                return; // Destroy map presence
+            }
+
+            const pSize = 1.6; const startX = x - (12 * pSize) / 2;
+            let mainColor = carObj ? carObj.color : "#7b241c";
+            
+            if (!isPlayer && freezeActive) { ctx.strokeStyle = "#00f2ff"; ctx.lineWidth = 2; ctx.strokeRect(startX - 4, y - 4, (12 * pSize) + 8, (15 * pSize) + 8); }
+            if (isPlayer && hasShield) { 
+                ctx.strokeStyle = (currentCarIndex === 8) ? "#f1c40f" : "#2ecc71"; 
+                ctx.lineWidth = (currentCarIndex === 8) ? 3 : 2; 
+                ctx.strokeRect(startX - 2, y - 2, (12 * pSize) + 4, (15 * pSize) + 4); 
+            }
+            ctx.globalAlpha = (isPlayer && powerActive && currentCarIndex === 2) ? 0.4 : 1.0;
+            
+            for (let r = 0; r < carMatrix.length; r++) {
+                for (let c = 0; c < carMatrix[r].length; c++) {
+                    const val = carMatrix[r][c]; if (val === 0) continue;
+                    if (val === 1) {
+                        if (isPlayer && (currentCarIndex === 8 || currentCarIndex === 9) && (c === 4 || c === 5)) ctx.fillStyle = carObj.secondary; 
+                        else ctx.fillStyle = mainColor;
+                    } 
+                    else if (val === 2) {
+                        ctx.fillStyle = (isPlayer && (currentCarIndex === 8 || currentCarIndex === 9)) ? "#ecf0f1" : (isPlayer ? "#f1c40f" : "#ecf0f1");
+                    }
+                    else if (val === 3) ctx.fillStyle = "#111"; 
+                    else if (val === 4) ctx.fillStyle = "#fff"; 
+                    else if (val === 5) ctx.fillStyle = isPlayer ? "#555" : "#222"; 
+                    ctx.fillRect(startX + (c * pSize), y + (r * pSize), pSize, pSize);
+                }
+            }
+            ctx.globalAlpha = 1.0;
+
+            // Sharingan Eye Effect for Itachi
+            if (isPlayer && powerActive && currentCarIndex === 9) {
+                const sx = startX + 9.5; const sy = y - 12;
+                ctx.fillStyle = "#c0392b"; 
+                ctx.beginPath(); ctx.arc(sx, sy, 7, 0, Math.PI*2); ctx.fill();
+                ctx.strokeStyle = "#000"; ctx.lineWidth = 1.5; ctx.stroke();
+                ctx.fillStyle = "#000"; 
+                ctx.beginPath(); ctx.arc(sx, sy, 1.5, 0, Math.PI*2); ctx.fill(); // Pupil
+                ctx.beginPath(); ctx.arc(sx, sy-3.5, 1, 0, Math.PI*2); ctx.fill(); // Tomoe 1
+                ctx.beginPath(); ctx.arc(sx-3, sy+2, 1, 0, Math.PI*2); ctx.fill(); // Tomoe 2
+                ctx.beginPath(); ctx.arc(sx+3, sy+2, 1, 0, Math.PI*2); ctx.fill(); // Tomoe 3
+            }
+        }
+
+        window.openGarage = function() { menu.style.display = 'none'; garage.style.display = 'flex'; renderGarage(); };
+        window.closeGarage = function() { garage.style.display = 'none'; menu.style.display = 'flex'; };
+
+        window.checkCheatCode = function(val) {
+            if (val.trim() === "20112") {
+                ownedCars = [0, 1, 2, 3, 4, 5, 6, 7]; 
+                localStorage.setItem('lvOwnedCars', JSON.stringify(ownedCars));
+                document.getElementById('cheatCodeInput').value = ""; 
+                document.getElementById('cheatCodeInput').placeholder = "ALL CARS UNLOCKED!";
+                renderGarage();
+            } else if (val.trim().toUpperCase() === "BMW") {
+                if (!ownedCars.includes(8)) {
+                    ownedCars.push(8); localStorage.setItem('lvOwnedCars', JSON.stringify(ownedCars));
+                    document.getElementById('cheatCodeInput').value = ""; document.getElementById('cheatCodeInput').placeholder = "BMW GTR UNLOCKED!";
+                    renderGarage();
+                }
+            } else if (val.trim().toUpperCase() === "ITACHI") {
+                if (!ownedCars.includes(9)) {
+                    ownedCars.push(9); localStorage.setItem('lvOwnedCars', JSON.stringify(ownedCars));
+                    document.getElementById('cheatCodeInput').value = ""; document.getElementById('cheatCodeInput').placeholder = "ITACHI UNLOCKED!";
+                    renderGarage();
+                }
+            }
+        };
+
+        function renderGarage() {
+            const list = document.getElementById('carList');
+            document.getElementById('garageBank').innerText = "BEST: " + highScore;
+            list.innerHTML = "";
+            cars.forEach((car, index) => {
+                if (car.hidden && !ownedCars.includes(index)) return;
+                const isOwned = ownedCars.includes(index);
+                const isSelected = currentCarIndex === index;
+                const item = document.createElement('div');
+                item.className = `car-item ${isSelected ? 'selected' : ''}`;
+                item.innerHTML = `
+                    <div class="car-info-row">
+                        <div style="text-align:left;">
+                            <span style="color:${car.color}">■</span> <strong>${car.name}</strong><br>
+                            <small style="color:${isOwned ? '#2ecc71' : '#aaa'};">${isOwned ? 'OWNED' : (car.hidden ? 'SECRET' : 'Price: ' + car.price)}</small>
+                        </div>
+                        <button class="buy-btn" style="background:${isOwned ? (isSelected ? '#f1c40f' : '#27ae60') : '#d35400'}" onclick="handleCarClick(${index})">
+                            ${isSelected ? 'ACTIVE' : (isOwned ? 'USE' : 'BUY')}
+                        </button>
+                    </div>
+                    <div class="car-stats">
+                        <span>Power: <span class="stat-val" style="color:${index===9 ? '#c0392b' : '#f39c12'}">${car.power}</span></span>
+                        <span>Spd: <span class="stat-val">x${car.topSpeed}</span></span>
+                        ${car.active >= 1 ? `<span>Run: <span class="stat-val">${car.active}s</span></span>` : ''}
+                        ${car.cd > 0 ? `<span>CD: <span class="stat-val">${car.cd}s</span></span>` : ''}
+                    </div>`;
+                list.appendChild(item);
+            });
+        }
+
+        window.handleCarClick = function(index) {
+            if (ownedCars.includes(index)) { currentCarIndex = index; localStorage.setItem('lvCurrentCar', currentCarIndex); }
+            else if (!cars[index].hidden && highScore >= cars[index].price) { ownedCars.push(index); localStorage.setItem('lvOwnedCars', JSON.stringify(ownedCars)); currentCarIndex = index; localStorage.setItem('lvCurrentCar', currentCarIndex); }
+            else { alert(cars[index].hidden ? "You need a secret code!" : "Score too low!"); }
+            renderGarage();
+        };
+
+        window.resetGameData = function() {
+            if(confirm("Reset everything?")) { localStorage.clear(); location.reload(); }
+        };
+
+        window.activatePower = function() {
+            if (!gameActive || powerActive || powerCooldown) return;
+            const car = cars[currentCarIndex];
+            powerActive = true; powerBtn.style.background = "#95a5a6"; powerBtn.innerText = "ACTIVE!"; powerBtn.style.color = "white";
+            
+            if (currentCarIndex === 1) { speed += 1.0; setTimeout(() => { if (gameActive) speed -= 1.0; endPower(car.cd * 1000); }, car.active * 1000); }
+            else if (currentCarIndex === 2) { setTimeout(() => { endPower(car.cd * 1000); }, car.active * 1000); }
+            else if (currentCarIndex === 3) { freezeActive = true; setTimeout(() => { freezeActive = false; endPower(car.cd * 1000); }, car.active * 1000); }
+            else if (currentCarIndex === 4 || currentCarIndex === 8) { hasShield = (currentCarIndex === 8); setTimeout(() => { endPower(car.cd * 1000); }, car.active * 1000); }
+            else if (currentCarIndex === 5) { hasShield = true; endPower(car.cd * 1000); }
+            else if (currentCarIndex === 6) { player.laneIndex = (player.laneIndex === 0) ? 1 : (player.laneIndex === 2 ? 1 : 0); player.targetX = lanes[player.laneIndex]; player.x = lanes[player.laneIndex]; endPower(car.cd * 1000); }
+            else if (currentCarIndex === 7) { let b = speed; speed *= 0.4; setTimeout(() => { if (gameActive) speed = b; endPower(car.cd * 1000); }, car.active * 1000); }
+            else if (currentCarIndex === 9) { setTimeout(() => { endPower(car.cd * 1000); }, car.active * 1000); } // ITACHI
+        };
+
+        function endPower(cd) { powerActive = false; powerCooldown = true; powerBtn.innerText = "WAIT..."; powerBtn.style.color = "white"; setTimeout(() => { powerCooldown = false; if (gameActive) setupPowerUI(); }, cd); }
+
+        function setupPowerUI() {
+            const btnData = { 1: ["#e74c3c", "⚡ NITRO"], 2: ["#9b59b6", "👻 GHOST"], 3: ["#3498db", "❄️ FREEZE"], 4: ["#f1c40f", "👑 VIP"], 5: ["#2ecc71", "🛡️ SHIELD"], 6: ["#e67e22", "🎯 SNAP"], 7: ["#fd79a8", "🕒 SLOW-MO"], 8: ["#f1c40f", "🌟 GOLDEN AURA"], 9: ["#111", "👁️ AMATERASU"] };
+            if (btnData[currentCarIndex]) { 
+                powerBtn.style.display = "block"; powerBtn.style.background = btnData[currentCarIndex][0]; powerBtn.innerText = btnData[currentCarIndex][1]; 
+                if (currentCarIndex === 9) powerBtn.style.color = "#e74c3c"; else powerBtn.style.color = "white";
+            } else { powerBtn.style.display = "none"; }
+        }
+
+        window.startGame = function(s) {
+            // Updated play command to log errors if the internet is slow
+            bgMusic.play().catch((err) => console.log("Music play blocked or buffering:", err)); 
+            score = 0; level = 1;
+            baseSpeed = s * cars[currentCarIndex].topSpeed; 
+            speed = baseSpeed;
+            gameActive = true;
+            player.laneIndex = 1; player.x = lanes[1]; player.targetX = lanes[1];
+            enemy.y = -100; lastScoreTime = Date.now(); menu.style.display = "none";
+            powerActive = false; powerCooldown = false; hasShield = false; freezeActive = false;
+            setupPowerUI();
+        };
+
+        document.getElementById('leftBtn').onclick = () => { if(player.laneIndex > 0) player.targetX = lanes[--player.laneIndex]; };
+        document.getElementById('rightBtn').onclick = () => { if(player.laneIndex < 2) player.targetX = lanes[++player.laneIndex]; };
+
+        function loop() {
+            ctx.fillStyle = "#34495e"; ctx.fillRect(0,0,150,225); 
+            ctx.fillStyle = "#27ae60"; ctx.fillRect(0,0,8,225); ctx.fillRect(142,0,8,225); 
+            ctx.fillStyle = "#fff"; roadOffset = (roadOffset + speed) % 20;
+            for(let i=-20; i<225; i+=20) { ctx.fillRect(52, i + roadOffset, 1, 10); ctx.fillRect(97, i + roadOffset, 1, 10); }
+            
+            if(gameActive) {
+                if (Date.now() - lastScoreTime >= 1000) { score++; lastScoreTime = Date.now(); if (score % 10 === 0) { level++; speed += 0.5; } }
+                player.x += (player.targetX - player.x) * 0.2; 
+                if (powerActive && (currentCarIndex === 4 || currentCarIndex === 8)) {
+                    if (enemy.laneIndex === player.laneIndex) {
+                        enemy.laneIndex = (player.laneIndex === 0) ? 1 : (player.laneIndex === 2 ? 1 : 0);
+                        enemy.targetX = lanes[enemy.laneIndex];
+                    }
+                }
+                enemy.x += (enemy.targetX - enemy.x) * 0.1; if(!freezeActive) enemy.y += speed;
+                if(enemy.y > 225) { enemy.y = -100; enemy.laneIndex = Math.floor(Math.random() * 3); enemy.targetX = lanes[enemy.laneIndex]; enemy.color = enemyColors[Math.floor(Math.random() * enemyColors.length)]; }
+                
+                // You pass through the burning flames completely unharmed when Amaterasu (index 9) is active!
+                if(!(powerActive && (currentCarIndex === 2 || currentCarIndex === 9)) && Math.abs(player.x - enemy.x) < 20 && Math.abs(player.y - enemy.y) < 30) {
+                    if (hasShield) { hasShield = false; enemy.y = -100; }
+                    else { 
+                        gameActive = false; bgMusic.pause();
+                        msgHeader.innerText = (score > highScore) ? "NEW RECORD!" : "GAME OVER";
+                        lastScoreDisplay.innerText = "SCORE: " + score;
+                        lastScoreDisplay.style.display = "block";
+                        if(score > highScore) { highScore = score; localStorage.setItem('lvRacerHigh', highScore.toString()); }
+                        highScoreDisplay.innerText = "BEST: " + highScore;
+                        menu.style.display = "flex"; powerBtn.style.display = "none"; 
+                    }
+                }
+            }
+            drawPixelCar(player.x, player.y, true, cars[currentCarIndex]); 
+            drawPixelCar(enemy.x, enemy.y, false, {color: enemy.color}); 
+            ctx.fillStyle = "white"; ctx.font = "bold 10px Arial"; ctx.fillText("SCORE: " + score, 15, 18); ctx.fillText("LVL: " + level, 15, 30);
+            requestAnimationFrame(loop);
+        }
+        loop();
+    </script>
+</body>
+</html>
